@@ -1,4 +1,4 @@
-# jsagnet Javascript AI Agent
+# js-agent Javascript AI Agent
 
 This library provides an ai agent object that will communicate via the OpenAI API in streaming mode.
 It supports standard requests and function calls.
