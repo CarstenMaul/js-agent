@@ -242,7 +242,7 @@ export function createAIAgent(options = {}) {
      * Public function to check if the agent is available
      * @returns 
      */
-    agentAvailable = () => {
+    available = () => {
         return !agentIsBusy;
     }
 
