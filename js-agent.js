@@ -1,6 +1,6 @@
 
 /**
- * Create an AI Agent
+ * Public Class AI Agent
  * @param {Object} [options={}]
  * @param {String} [options.oaiUrl = "https://api.openai.com/v1/chat/completions"]
  * @param {String} [options.oaiApiKey]
@@ -30,6 +30,9 @@ export function createAIAgent(options = {}) {
 
     const FUNCTIONS = commandFunctions;
 
+    let recursionCounter = 0;
+    const MAXRECURSIONS = 10;
+
     let agentIsBusy = false;
 
     let context = systemMessage
@@ -38,7 +41,7 @@ export function createAIAgent(options = {}) {
 
 
     /**
-     * Execute a command from command-functions.js
+     * Private function Execute a command from command-functions.js
      * @param {*} command 
      * @param {*} service 
      * @returns 
@@ -51,18 +54,18 @@ export function createAIAgent(options = {}) {
         if (debugEnabled)
             console.log("executeServiceCommand: Service name: " + serviceName + " Function name: " + functionName + " Arguments: " + JSON.stringify(args));
 
-        try{
+        try {
             // select the object of the service, then the command function and execute it with the arguments
             return await service[serviceName][functionName](args);
         } catch (error) {
-            console.error(error);
-            return "Error: " + error;
+            console.error("ERROR: executeServiceCommand " + error.message);
+            throw new Error(error);
         }
     }
 
 
     /**
-     * perform an async fetch to the openai api in streaming mode.
+     * Private function perform an async fetch to the openai api in streaming mode.
      * Execute any function calls that the AI generates.
      * @param {*} context 
      * @returns 
@@ -70,6 +73,12 @@ export function createAIAgent(options = {}) {
     async function getAIResponseStreaming( context ) {
 
         agentIsBusy = true;
+
+        recursionCounter++;
+        if (recursionCounter > MAXRECURSIONS) {
+            console.log("ERROR: Recursion counter exceeded. Aborting.");
+            throw new Error("Recursion counter exceeded. Aborting.");
+        }
 
         // Prepare the body for the call to openai api
         const restCallData = {
@@ -163,20 +172,31 @@ export function createAIAgent(options = {}) {
                 
                 const command = { name: functionCallName, arguments: functionCallArguments };
 
-                const serviceResult = await executeServiceCommand(command, services);
+                try {
+                    const serviceResult = await executeServiceCommand(command, services);
+                } catch (error) {
+                    console.error("ERROR: getAIResponseStreaming: executeServiceCommand ");
+                    serviceResult = "Function " + functionCallName + " failed. Error: " + error.message;
+                }
 
                 if (debugEnabled)
                     console.log("Service result: " + serviceResult);
 
                 context.push({ "role": "function", "name": functionCallName, "content": serviceResult });
 
-                const response = await getAIResponseStreaming( context ).then((response) => {
-                    console.log("getAIResponseStreaming: Response: ", response);
-                    thisresponse = response;
-                });
+                try {
+                    const response = await getAIResponseStreaming( context ).then((response) => {
+                        console.log("getAIResponseStreaming: Response: ", response);
+                        thisresponse = response;
+                    });
+                } catch (error) {
+                    console.error("ERROR: getAIResponseStreaming: Recursive call to getAIResponseStreaming failed. Error: " + error.message);
+                    throw new Error(error);
+                }
             }
 
             agentIsBusy = false;
+            recursionCounter--;
 
             return thisresponse;
 
@@ -198,11 +218,15 @@ export function createAIAgent(options = {}) {
 
         try {
             let thisresponse = "";
-            console.log("Test");
+
             context.push({ role: "user", content: usermessage });
-            console.log("Context: ", context);
+
+            if (debugEnabled)
+                console.log("Context: ", context);
+
             await getAIResponseStreaming(context).then((response) => {
-                console.log("processMessage: Response: ", response);
+                if (debugEnabled)
+                    console.log("processMessage: Response: ", response);
                 thisresponse = response;
             });
 
@@ -214,9 +238,17 @@ export function createAIAgent(options = {}) {
         }
     }
 
+    /**
+     * Public function to check if the agent is available
+     * @returns 
+     */
+    agentAvailable = () => {
+        return !agentIsBusy;
+    }
 
     // The public API (functions that we want to expose to the outside world)
     return {
-        processMessage
+        processMessage,
+        agentAvailable
     };
 }
