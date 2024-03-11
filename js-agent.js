@@ -171,9 +171,9 @@ export function createAIAgent(options = {}) {
                     console.log("Function call name: " + functionCallName + " Function call arguments: " + functionCallArguments);
                 
                 const command = { name: functionCallName, arguments: functionCallArguments };
-
+                let serviceResult = "";
                 try {
-                    const serviceResult = await executeServiceCommand(command, services);
+                    const res = await executeServiceCommand(command, services).then((result) => { serviceResult = result;});
                 } catch (error) {
                     console.error("ERROR: getAIResponseStreaming: executeServiceCommand ");
                     serviceResult = "Function " + functionCallName + " failed. Error: " + error.message;
@@ -182,6 +182,7 @@ export function createAIAgent(options = {}) {
                 if (debugEnabled)
                     console.log("Service result: " + serviceResult);
 
+                // add the result of the function call to the context
                 context.push({ "role": "function", "name": functionCallName, "content": serviceResult });
 
                 try {
@@ -197,6 +198,9 @@ export function createAIAgent(options = {}) {
 
             agentIsBusy = false;
             recursionCounter--;
+
+            // add the response to the context
+            context.push({ "role": "assistant", "content": thisresponse });
 
             return thisresponse;
 
@@ -242,13 +246,23 @@ export function createAIAgent(options = {}) {
      * Public function to check if the agent is available
      * @returns 
      */
-    available = () => {
+    function available() {
         return !agentIsBusy;
+    }
+
+    function reset() {
+        context = systemMessage
+            ? [{ role: "system", content: systemMessage }]
+            : [{ role: "system", content: "You are a friendly and helpfule agent. Answer the user questions as good as you can." }];
+
+        if (debugEnabled)
+            console.log("Context resetted");
     }
 
     // The public API (functions that we want to expose to the outside world)
     return {
         processMessage,
-        agentAvailable
+        available,
+        reset
     };
 }
